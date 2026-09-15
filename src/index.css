@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Prompt', 'Mitr', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  h1, h2, h3, .font-heading {
+    font-family: 'Mitr', 'Prompt', sans-serif;
+  }
+}
+
+/* Cute soft pastel custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f7f3ed;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #fbcfe8;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #f472b6;
+}

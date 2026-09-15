@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account in the Employee Sales & Audit tracking system",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique employee or user ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "manager", "employee"],
+          "description": "Role permission tier: admin, manager, or employee"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password or credential hash"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Avatar image URL"
+        },
+        "position": {
+          "type": "string",
+          "description": "Position title"
+        },
+        "department": {
+          "type": "string",
+          "description": "Department name"
+        },
+        "joinedDate": {
+          "type": "string",
+          "description": "Date user joined the team"
+        }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "SalesRecord": {
+      "title": "SalesRecord",
+      "description": "Employee daily sales log with pancake order and JST system counts",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Record identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Employee ID who owns the record"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Employee name"
+        },
+        "userAvatar": {
+          "type": "string",
+          "description": "Employee avatar URL"
+        },
+        "date": {
+          "type": "string",
+          "description": "Sales record date in YYYY-MM-DD"
+        },
+        "salesAmount": {
+          "type": "number",
+          "description": "Total sales amount in THB"
+        },
+        "pancakeOrders": {
+          "type": "number",
+          "description": "Pancake orders count"
+        },
+        "jstCount": {
+          "type": "number",
+          "description": "Count recorded in JST system"
+        },
+        "differ": {
+          "type": "number",
+          "description": "Difference between Pancake orders and JST system"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes or audit comments"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when record was logged"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "User ID who created the record"
+        }
+      },
+      "required": ["id", "userId", "userName", "date", "salesAmount", "pancakeOrders", "jstCount", "differ"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of system user profiles and roles"
+    },
+    "/salesRecords/{recordId}": {
+      "schema": "SalesRecord",
+      "description": "Collection of employee sales records, pancake orders, and JST audits"
+    }
+  }
+}

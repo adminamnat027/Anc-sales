@@ -1,0 +1,6 @@
+{
+  "name": "Employee Sales Tracker",
+  "description": "ระบบบันทึกยอดขายพนักงาน แดชบอร์ดสรุปยอด ออเดอร์ Pancake ระบบ JST เปรียบเทียบ Differ และคำนวณ KPI รายวัน สัปดาห์ เดือน ปี พร้อมส่งออก Google Sheets และ PDF",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
