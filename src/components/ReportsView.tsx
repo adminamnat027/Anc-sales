@@ -46,7 +46,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   allUsers,
   records
 }) => {
-  const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || 'all');
   const [period, setPeriod] = useState<TimeFilterPeriod>('daily');
   const [singleDate, setSingleDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [customRange, setCustomRange] = useState<DateRange>({
@@ -57,35 +57,49 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [copied, setCopied] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
 
+  const isEmployee = currentUser?.role === 'employee';
+  const effectiveUserId = useMemo(() => {
+    if (isEmployee && currentUser) {
+      return currentUser.id;
+    }
+    return selectedUserId;
+  }, [isEmployee, currentUser, selectedUserId]);
+
   const daysCount = useMemo(() => {
     return getPeriodDays(period, customRange);
   }, [period, customRange]);
 
   const activeEmployeeUsers = useMemo(() => {
+    if (isEmployee && currentUser) {
+      return [currentUser];
+    }
     const employees = allUsers.filter(u => u.role === 'employee');
     if (selectedUserId !== 'all') {
       return employees.filter(u => u.id === selectedUserId);
     }
     return employees;
-  }, [allUsers, selectedUserId]);
+  }, [allUsers, selectedUserId, isEmployee, currentUser]);
 
   const filteredRecords = useMemo(() => {
     return filterRecordsByPeriod(
       records,
       period,
-      selectedUserId,
+      effectiveUserId,
       customRange,
       singleDate
     );
-  }, [records, period, selectedUserId, customRange, singleDate]);
+  }, [records, period, effectiveUserId, customRange, singleDate]);
 
   const summaries = useMemo(() => {
     const calculated = calculateUserSummaries(allUsers, filteredRecords, period, customRange);
+    if (isEmployee && currentUser) {
+      return calculated.filter(s => s.userId === currentUser.id);
+    }
     if (selectedUserId !== 'all') {
       return calculated.filter(s => s.userId === selectedUserId);
     }
     return calculated;
-  }, [allUsers, filteredRecords, period, customRange, selectedUserId]);
+  }, [allUsers, filteredRecords, period, customRange, isEmployee, currentUser, selectedUserId]);
 
   const targetKpiTotal = useMemo(() => {
     return getTargetKpi(period, activeEmployeeUsers.length, customRange);
@@ -167,20 +181,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <span>เรียกดูข้อมูล User:</span>
             </div>
             
-            <select
-              value={selectedUserId}
-              onChange={e => setSelectedUserId(e.target.value)}
-              className="px-3.5 py-2 bg-pink-50/50 hover:bg-pink-50 border border-pink-200 rounded-2xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300 cursor-pointer"
-            >
-              <option value="all">👥 พนักงานทั้งหมด (All)</option>
-              {allUsers
-                .filter(u => u.role === 'employee')
-                .map(user => (
-                  <option key={user.id} value={user.id}>
-                    {user.id} - {user.name}
-                  </option>
-                ))}
-            </select>
+            {isEmployee && currentUser ? (
+              <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>รายงานของฉัน: {currentUser.name} ({currentUser.id})</span>
+              </div>
+            ) : (
+              <select
+                value={selectedUserId}
+                onChange={e => setSelectedUserId(e.target.value)}
+                className="px-3.5 py-2 bg-pink-50/50 hover:bg-pink-50 border border-pink-200 rounded-2xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300 cursor-pointer"
+              >
+                <option value="all">👥 พนักงานทั้งหมด (All)</option>
+                {allUsers
+                  .filter(u => u.role === 'employee')
+                  .map(user => (
+                    <option key={user.id} value={user.id}>
+                      {user.id} - {user.name}
+                    </option>
+                  ))}
+              </select>
+            )}
           </div>
 
           {/* Time Filter Tabs */}

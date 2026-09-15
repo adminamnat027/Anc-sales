@@ -52,8 +52,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onEditRecord,
   onDeleteRecord
 }) => {
-  // Filters
-  const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  // Filters - default to current logged-in user to show their data immediately
+  const [selectedUserId, setSelectedUserId] = useState<string>(currentUser?.id || 'all');
   const [period, setPeriod] = useState<TimeFilterPeriod>('daily');
   const [singleDate, setSingleDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [customRange, setCustomRange] = useState<DateRange>({
@@ -63,6 +63,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Permission checks
+  const isEmployee = currentUser?.role === 'employee';
+  const effectiveUserId = useMemo(() => {
+    if (isEmployee && currentUser) {
+      return currentUser.id;
+    }
+    return selectedUserId;
+  }, [isEmployee, currentUser, selectedUserId]);
+
   const canDelete = currentUser?.role === 'admin';
   const canEditRecord = (record: SalesRecord) => {
     if (!currentUser) return false;
@@ -77,11 +85,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return filterRecordsByPeriod(
       records,
       period,
-      selectedUserId,
+      effectiveUserId,
       customRange,
       singleDate
     );
-  }, [records, period, selectedUserId, customRange, singleDate]);
+  }, [records, period, effectiveUserId, customRange, singleDate]);
 
   // Days in period & KPI
   const daysCount = useMemo(() => {
@@ -90,12 +98,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Number of employees considered
   const activeEmployeeUsers = useMemo(() => {
+    if (isEmployee && currentUser) {
+      return [currentUser];
+    }
     const employees = allUsers.filter(u => u.role === 'employee');
     if (selectedUserId !== 'all') {
       return employees.filter(u => u.id === selectedUserId);
     }
     return employees;
-  }, [allUsers, selectedUserId]);
+  }, [allUsers, selectedUserId, isEmployee, currentUser]);
 
   const targetKpiTotal = useMemo(() => {
     const personMultiplier = Math.max(1, activeEmployeeUsers.length);
@@ -122,11 +133,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Summaries per user for Pie chart and ranking
   const userSummaries = useMemo(() => {
-    return calculateUserSummaries(allUsers, filteredRecords, period, customRange);
-  }, [allUsers, filteredRecords, period, customRange]);
+    let usersToProcess = allUsers;
+    if (isEmployee && currentUser) {
+      usersToProcess = [currentUser];
+    } else if (effectiveUserId !== 'all') {
+      const matched = allUsers.filter(u => u.id === effectiveUserId);
+      usersToProcess = matched.length > 0 ? matched : (currentUser ? [currentUser] : allUsers);
+    }
+    return calculateUserSummaries(usersToProcess, filteredRecords, period, customRange);
+  }, [allUsers, filteredRecords, period, customRange, isEmployee, currentUser, effectiveUserId]);
+
+  const isSingleUser = userSummaries.length === 1;
+  const singleUser = isSingleUser ? userSummaries[0] : null;
 
   // Pie chart calculation
   const pieData = useMemo(() => {
+    if (isSingleUser && singleUser) {
+      const target = targetKpiTotal > 0 ? targetKpiTotal : DAILY_KPI_PER_PERSON * daysCount;
+      const sales = singleUser.totalSales;
+      const achievedPct = target > 0 ? Math.min(100, (sales / target) * 100) : 100;
+      const remainingPct = Math.max(0, 100 - achievedPct);
+
+      const slices = [
+        {
+          userId: singleUser.userId,
+          userName: 'ยอดขายที่ทำได้แล้ว',
+          totalSales: sales,
+          percent: achievedPct,
+          startAngle: 0,
+          endAngle: achievedPct * 3.6,
+          color: { fill: achievedPct >= 100 ? '#34d399' : '#f472b6', bg: 'bg-pink-400', text: 'text-pink-600', name: 'Achieved' }
+        }
+      ];
+
+      if (remainingPct > 0) {
+        slices.push({
+          userId: 'remaining',
+          userName: 'ยอดคงเหลือเพื่อถึงเป้า KPI',
+          totalSales: Math.max(0, target - sales),
+          percent: remainingPct,
+          startAngle: achievedPct * 3.6,
+          endAngle: 360,
+          color: { fill: '#e2e8f0', bg: 'bg-slate-300', text: 'text-slate-500', name: 'Remaining' }
+        });
+      }
+
+      return slices;
+    }
+
     const colors = [
       { fill: '#f472b6', bg: 'bg-pink-400', text: 'text-pink-600', name: 'Rose' },
       { fill: '#38bdf8', bg: 'bg-sky-400', text: 'text-sky-600', name: 'Sky' },
@@ -154,7 +208,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         color
       };
     });
-  }, [userSummaries]);
+  }, [userSummaries, isSingleUser, singleUser, targetKpiTotal, daysCount]);
 
   // Search filtered records for the table
   const displayedTableRecords = useMemo(() => {
@@ -190,27 +244,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span>เรียกดูข้อมูล User:</span>
             </div>
             
-            <select
-              id="select-user-filter"
-              value={selectedUserId}
-              onChange={e => setSelectedUserId(e.target.value)}
-              className="px-3.5 py-2 bg-pink-50/50 hover:bg-pink-50 border border-pink-200 rounded-2xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300 cursor-pointer"
-            >
-              <option value="all">👥 พนักงานทั้งหมด (All Users)</option>
-              {allUsers
-                .filter(u => u.role === 'employee')
-                .map(user => (
-                  <option key={user.id} value={user.id}>
-                    {user.id} - {user.name}
-                  </option>
-                ))}
-            </select>
+            {isEmployee && currentUser ? (
+              <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>ข้อมูลยอดขายของ: {currentUser.name} ({currentUser.id})</span>
+              </div>
+            ) : (
+              <>
+                <select
+                  id="select-user-filter"
+                  value={selectedUserId}
+                  onChange={e => setSelectedUserId(e.target.value)}
+                  className="px-3.5 py-2 bg-pink-50/50 hover:bg-pink-50 border border-pink-200 rounded-2xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-pink-300 cursor-pointer"
+                >
+                  {currentUser && (
+                    <option value={currentUser.id}>
+                      👤 ข้อมูลของฉัน ({currentUser.name})
+                    </option>
+                  )}
+                  <option value="all">👥 พนักงานทั้งหมด (All Users)</option>
+                  {allUsers
+                    .filter(u => u.id !== currentUser?.id)
+                    .map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.id} - {user.name} ({user.role === 'employee' ? 'พนักงาน' : user.role === 'manager' ? 'ผู้จัดการ' : 'แอดมิน'})
+                      </option>
+                    ))}
+                </select>
 
-            {/* If single user selected, show mini badge */}
-            {selectedUserId !== 'all' && (
-              <span className="text-[11px] px-2.5 py-1 rounded-full bg-pink-100 text-pink-700 font-medium">
-                {allUsers.find(u => u.id === selectedUserId)?.name}
-              </span>
+                {/* If single user selected, show mini badge */}
+                {selectedUserId !== 'all' && (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-pink-100 text-pink-700 font-medium">
+                    {allUsers.find(u => u.id === selectedUserId)?.name}
+                  </span>
+                )}
+              </>
             )}
           </div>
 
@@ -471,10 +539,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-heading font-semibold text-base text-slate-800">
-                    กราฟ Pie Chart แสดง % ของ User
+                    {isSingleUser ? 'สัดส่วนเป้าหมาย KPI ของฉัน' : 'กราฟ Pie Chart แสดง % ของ User'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    สัดส่วนยอดขายเปรียบเทียบระหว่างพนักงาน
+                    {isSingleUser ? 'วิเคราะห์ยอดขายที่ทำได้เทียบเป้าหมาย KPI' : 'สัดส่วนยอดขายเปรียบเทียบระหว่างพนักงาน'}
                   </p>
                 </div>
               </div>
@@ -514,13 +582,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </svg>
                   
                   {/* Center Text */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                    <span className="text-[11px] text-slate-400 font-medium">ยอดรวม</span>
-                    <span className="font-heading font-bold text-sm text-slate-700">
-                      {formatCurrency(totalSales)}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-4">
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {isSingleUser ? 'KPI สะสม' : 'ยอดรวม'}
                     </span>
-                    <span className="text-[10px] text-pink-500 font-medium">
-                      {userSummaries.length} พนักงาน
+                    <span className="font-heading font-bold text-sm text-slate-700">
+                      {isSingleUser ? `${(singleUser?.kpiPercentage ?? 0).toFixed(1)}%` : formatCurrency(totalSales)}
+                    </span>
+                    <span className="text-[10px] text-pink-500 font-medium truncate max-w-full">
+                      {isSingleUser ? (singleUser?.userName ?? currentUser?.name) : `${userSummaries.length} พนักงาน`}
                     </span>
                   </div>
                 </div>
@@ -534,22 +604,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           {/* Pie Chart Legend */}
           <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-            {pieData.map((user) => (
+            {pieData.map((item) => (
               <div 
-                key={user.userId} 
-                onClick={() => setSelectedUserId(user.userId)}
-                className={`flex items-center gap-2 p-1.5 rounded-xl transition-colors cursor-pointer ${
-                  selectedUserId === user.userId ? 'bg-pink-50 text-rose-700 font-semibold' : 'hover:bg-slate-50'
+                key={item.userId} 
+                onClick={() => {
+                  if (!isSingleUser && 'userId' in item) setSelectedUserId(item.userId);
+                }}
+                className={`flex items-center gap-2 p-1.5 rounded-xl transition-colors ${
+                  !isSingleUser && selectedUserId === item.userId ? 'bg-pink-50 text-rose-700 font-semibold cursor-pointer' : ''
                 }`}
               >
                 <span 
                   className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
-                  style={{ backgroundColor: user.color.fill }} 
+                  style={{ backgroundColor: item.color.fill }} 
                 />
                 <div className="truncate flex-1 min-w-0">
-                  <div className="truncate text-[11px]">{user.userName.split(' ')[1] || user.userName}</div>
+                  <div className="truncate text-[11px] font-medium">{item.userName}</div>
                   <div className="text-[10px] text-slate-400 font-medium">
-                    {user.percent.toFixed(1)}% ({formatCurrency(user.totalSales)})
+                    {item.percent.toFixed(1)}% ({formatCurrency(item.totalSales)})
                   </div>
                 </div>
               </div>
@@ -567,10 +639,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div>
                   <h3 className="font-heading font-semibold text-base text-slate-800">
-                    ความคืบหน้ายอดขายเทียบ KPI (185,000 ฿/คน/วัน)
+                    {isSingleUser ? 'สรุปผลงานของพนักงานปัจจุบัน' : 'ความคืบหน้ายอดขายเทียบ KPI (185,000 ฿/คน/วัน)'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    เป้าหมายรายคนสำหรับ {daysCount} วัน: {formatCurrency(DAILY_KPI_PER_PERSON * daysCount)}
+                    {isSingleUser 
+                      ? `เป้าหมายส่วนบุคคล ${daysCount} วัน: ${formatCurrency(DAILY_KPI_PER_PERSON * daysCount)}`
+                      : `เป้าหมายรายคนสำหรับ ${daysCount} วัน: ${formatCurrency(DAILY_KPI_PER_PERSON * daysCount)}`}
                   </p>
                 </div>
               </div>
@@ -587,67 +661,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {/* Performance List */}
             <div className="space-y-3.5">
-              {userSummaries.map((user) => {
-                const target = DAILY_KPI_PER_PERSON * daysCount;
-                const isPassed = user.totalSales >= target;
-                return (
-                  <div 
-                    key={user.userId} 
-                    className="p-3 rounded-2xl bg-slate-50/70 hover:bg-pink-50/40 border border-slate-100 transition-all"
-                  >
-                    <div className="flex items-center justify-between mb-1.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <img 
-                          src={user.avatar} 
-                          alt={user.userName} 
-                          className="w-7 h-7 rounded-full bg-white border border-slate-200 object-cover" 
-                          referrerPolicy="no-referrer" 
-                        />
-                        <div>
-                          <span className="font-medium text-slate-800">{user.userName}</span>
-                          <span className="text-[10px] text-slate-400 ml-1.5">({user.userId})</span>
+              {userSummaries.length > 0 ? (
+                userSummaries.map((user) => {
+                  const target = DAILY_KPI_PER_PERSON * daysCount;
+                  const isPassed = user.totalSales >= target;
+                  return (
+                    <div 
+                      key={user.userId} 
+                      className="p-3 rounded-2xl bg-slate-50/70 hover:bg-pink-50/40 border border-slate-100 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-1.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src={user.avatar} 
+                            alt={user.userName} 
+                            className="w-7 h-7 rounded-full bg-white border border-slate-200 object-cover" 
+                            referrerPolicy="no-referrer" 
+                          />
+                          <div>
+                            <span className="font-medium text-slate-800">{user.userName}</span>
+                            <span className="text-[10px] text-slate-400 ml-1.5">({user.userId})</span>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="font-semibold text-slate-800">{formatCurrency(user.totalSales)}</span>
+                          <span className={`text-[11px] ml-2 font-semibold ${isPassed ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            ({user.kpiPercentage.toFixed(1)}%)
+                          </span>
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <span className="font-semibold text-slate-800">{formatCurrency(user.totalSales)}</span>
-                        <span className={`text-[11px] ml-2 font-semibold ${isPassed ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          ({user.kpiPercentage.toFixed(1)}%)
-                        </span>
+                      {/* Progress */}
+                      <div className="w-full h-2.5 bg-slate-200/80 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isPassed ? 'bg-emerald-400' : 'bg-pink-400'
+                          }`}
+                          style={{ width: `${Math.min(100, user.kpiPercentage)}%` }}
+                        />
                       </div>
-                    </div>
 
-                    {/* Progress */}
-                    <div className="w-full h-2.5 bg-slate-200/80 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isPassed ? 'bg-emerald-400' : 'bg-pink-400'
-                        }`}
-                        style={{ width: `${Math.min(100, user.kpiPercentage)}%` }}
-                      />
-                    </div>
+                      {/* Stats pills: Pancake, JST, Differ */}
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                        <div className="flex items-center gap-3">
+                          <span>Pancake: <strong className="text-slate-700">{formatNumber(user.totalPancake)}</strong></span>
+                          <span>JST: <strong className="text-slate-700">{formatNumber(user.totalJst)}</strong></span>
+                          <span className={`px-2 py-0.2 rounded-full font-medium ${
+                            user.differ === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                          }`}>
+                            Differ: {user.differ === 0 ? '0 (ตรงกัน)' : `${user.differ > 0 ? '+' : ''}${user.differ}`}
+                          </span>
+                        </div>
 
-                    {/* Stats pills: Pancake, JST, Differ */}
-                    <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
-                      <div className="flex items-center gap-3">
-                        <span>Pancake: <strong className="text-slate-700">{formatNumber(user.totalPancake)}</strong></span>
-                        <span>JST: <strong className="text-slate-700">{formatNumber(user.totalJst)}</strong></span>
-                        <span className={`px-2 py-0.2 rounded-full font-medium ${
-                          user.differ === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          isPassed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                         }`}>
-                          Differ: {user.differ === 0 ? '0 (ตรงกัน)' : `${user.differ > 0 ? '+' : ''}${user.differ}`}
+                          {isPassed ? '✓ ผ่าน KPI' : 'รอเป้าหมาย'}
                         </span>
                       </div>
-
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        isPassed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {isPassed ? '✓ ผ่าน KPI' : 'รอเป้าหมาย'}
-                      </span>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50/50 rounded-2xl border border-slate-100">
+                  ยังไม่มีข้อมูลยอดขายของพนักงานในระบบ
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -725,10 +805,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </td>
                       
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-pink-100 text-pink-600 text-[10px] flex items-center justify-center font-bold">
-                            {record.userId.replace('EMP-', '')}
-                          </div>
+                        <div className="flex items-center gap-2.5">
+                          {(() => {
+                            const userObj = allUsers.find(u => u.id === record.userId);
+                            if (userObj?.avatar) {
+                              return (
+                                <img 
+                                  src={userObj.avatar} 
+                                  alt={record.userName} 
+                                  className="w-7 h-7 rounded-full bg-white border border-pink-200 object-cover shrink-0 shadow-2xs"
+                                  referrerPolicy="no-referrer"
+                                />
+                              );
+                            }
+                            return (
+                              <div className="w-7 h-7 rounded-full bg-pink-100 text-pink-700 text-[11px] flex items-center justify-center font-bold shrink-0">
+                                {record.userName.charAt(0) || record.userId.slice(-2)}
+                              </div>
+                            );
+                          })()}
                           <div>
                             <span className="font-semibold text-slate-800">{record.userName}</span>
                             <span className="text-[10px] text-slate-400 block">{record.userId}</span>

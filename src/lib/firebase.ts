@@ -58,24 +58,12 @@ export function subscribeToUsers(
   onError?: (err: Error) => void
 ) {
   const usersRef = collection(db, 'users');
-  return onSnapshot(usersRef, async (snapshot) => {
-    if (snapshot.empty) {
-      // Seed initial users into Firestore
-      try {
-        for (const user of INITIAL_USERS) {
-          await setDoc(doc(db, 'users', user.id), user);
-        }
-        onUpdate(INITIAL_USERS);
-      } catch (err) {
-        console.error("Failed seeding users to Firestore:", err);
-      }
-    } else {
-      const usersList: User[] = [];
-      snapshot.forEach(docSnap => {
-        usersList.push(docSnap.data() as User);
-      });
-      onUpdate(usersList);
-    }
+  return onSnapshot(usersRef, (snapshot) => {
+    const usersList: User[] = [];
+    snapshot.forEach(docSnap => {
+      usersList.push(docSnap.data() as User);
+    });
+    onUpdate(usersList);
   }, (error) => {
     console.error("Firestore users subscription error:", error);
     if (onError) onError(error);
@@ -88,26 +76,14 @@ export function subscribeToRecords(
   onError?: (err: Error) => void
 ) {
   const recordsRef = collection(db, 'salesRecords');
-  return onSnapshot(recordsRef, async (snapshot) => {
-    if (snapshot.empty) {
-      // Seed initial sales records into Firestore
-      try {
-        for (const record of INITIAL_SALES_RECORDS) {
-          await setDoc(doc(db, 'salesRecords', record.id), record);
-        }
-        onUpdate(INITIAL_SALES_RECORDS);
-      } catch (err) {
-        console.error("Failed seeding sales records to Firestore:", err);
-      }
-    } else {
-      const recordsList: SalesRecord[] = [];
-      snapshot.forEach(docSnap => {
-        recordsList.push(docSnap.data() as SalesRecord);
-      });
-      // Sort newest first
-      recordsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      onUpdate(recordsList);
-    }
+  return onSnapshot(recordsRef, (snapshot) => {
+    const recordsList: SalesRecord[] = [];
+    snapshot.forEach(docSnap => {
+      recordsList.push(docSnap.data() as SalesRecord);
+    });
+    // Sort newest first
+    recordsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    onUpdate(recordsList);
   }, (error) => {
     console.error("Firestore records subscription error:", error);
     if (onError) onError(error);

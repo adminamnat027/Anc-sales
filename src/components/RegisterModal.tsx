@@ -178,40 +178,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({
               <label className="block text-xs font-medium text-slate-700 mb-1">
                 ระดับสิทธิ์การใช้งาน (User Role)
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRole('employee')}
-                  className={`p-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer ${
-                    role === 'employee'
-                      ? 'bg-emerald-100 border-emerald-300 text-emerald-800 shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  พนักงาน (Employee)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('manager')}
-                  className={`p-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer ${
-                    role === 'manager'
-                      ? 'bg-purple-100 border-purple-300 text-purple-800 shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  ผู้จัดการ (Manager)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`p-2 rounded-xl text-xs font-medium border text-center transition-all cursor-pointer ${
-                    role === 'admin'
-                      ? 'bg-rose-100 border-rose-300 text-rose-800 shadow-sm'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  แอดมิน (Admin)
-                </button>
+              <div className="w-full">
+                <div className="p-2.5 rounded-xl text-xs font-medium border text-center bg-emerald-50 border-emerald-200 text-emerald-800 flex items-center justify-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                  <span>พนักงาน (Employee)</span>
+                </div>
               </div>
             </div>
 

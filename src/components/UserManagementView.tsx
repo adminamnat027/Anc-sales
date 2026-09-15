@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, UserRole } from '../types';
 import { 
   Users, 
@@ -12,8 +12,14 @@ import {
   Sparkles, 
   AlertCircle,
   Shield,
-  CheckCircle2
+  CheckCircle2,
+  Camera,
+  Upload,
+  RefreshCw,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
+import { resizeImageToBase64, getDefaultAvatarUrl } from '../utils/imageHelper';
 
 interface UserManagementViewProps {
   currentUser: User;
@@ -43,16 +49,26 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [role, setRole] = useState<UserRole>('employee');
   const [position, setPosition] = useState('');
   const [department, setDepartment] = useState('');
+  const [avatar, setAvatar] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const modalFileInputRef = useRef<HTMLInputElement>(null);
+  const quickFileInputRef = useRef<HTMLInputElement>(null);
+  const [quickPhotoUserId, setQuickPhotoUserId] = useState<string | null>(null);
+
   const handleOpenAdd = () => {
+    const generatedId = `EMP-${Math.floor(100 + Math.random() * 900)}`;
     setEditingUser(null);
-    setUserId(`EMP-${Math.floor(100 + Math.random() * 900)}`);
+    setUserId(generatedId);
     setName('');
     setEmail('');
     setRole('employee');
     setPosition('เจ้าหน้าที่ฝ่ายขาย');
     setDepartment('ทีมขาย');
+    setAvatar(getDefaultAvatarUrl(generatedId));
+    setShowUrlInput(false);
     setErrorMsg('');
     setIsModalOpen(true);
   };
@@ -65,8 +81,73 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setRole(user.role);
     setPosition(user.position || '');
     setDepartment(user.department || '');
+    setAvatar(user.avatar || getDefaultAvatarUrl(user.name || user.id));
+    setShowUrlInput(false);
     setErrorMsg('');
     setIsModalOpen(true);
+  };
+
+  const handleModalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploading(true);
+      const dataUrl = await resizeImageToBase64(file, 256, 256);
+      setAvatar(dataUrl);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('ไม่สามารถประมวลผลรูปภาพได้ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsUploading(false);
+      if (modalFileInputRef.current) modalFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRandomizeAvatar = () => {
+    const randomSeed = Math.random().toString(36).substring(2, 9);
+    const styles = ['adventurer', 'lorelei', 'notionists', 'micah', 'bottts'];
+    const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
+    setAvatar(`https://api.dicebear.com/7.x/${selectedStyle}/svg?seed=${randomSeed}&backgroundColor=ffd5dc,d1fae5,e0e7ff`);
+  };
+
+  const handleDeletePhoto = () => {
+    setAvatar(getDefaultAvatarUrl(name || userId));
+  };
+
+  // Quick Photo Change for Admin directly from table
+  const triggerQuickPhotoUpload = (targetUserId: string) => {
+    setQuickPhotoUserId(targetUserId);
+    quickFileInputRef.current?.click();
+  };
+
+  const handleQuickFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !quickPhotoUserId) return;
+    try {
+      const dataUrl = await resizeImageToBase64(file, 256, 256);
+      const targetUser = allUsers.find(u => u.id === quickPhotoUserId);
+      if (targetUser) {
+        onUpdateUser({
+          ...targetUser,
+          avatar: dataUrl
+        });
+      }
+    } catch (err) {
+      console.error("Error updating avatar:", err);
+    } finally {
+      setQuickPhotoUserId(null);
+      if (quickFileInputRef.current) quickFileInputRef.current.value = '';
+    }
+  };
+
+  const handleQuickPhotoDelete = (targetUser: User) => {
+    if (!isAdmin) return;
+    if (confirm(`คุณต้องการลบรูปภาพของ ${targetUser.name} และใช้รูปเริ่มต้นใช่หรือไม่?`)) {
+      onUpdateUser({
+        ...targetUser,
+        avatar: getDefaultAvatarUrl(targetUser.name || targetUser.id)
+      });
+    }
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -92,9 +173,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       email: email.trim(),
       password: editingUser ? editingUser.password : 'password123',
       role: isAdmin ? role : 'employee', // Manager can only manage employees
-      avatar: editingUser
-        ? editingUser.avatar
-        : `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}&backgroundColor=ffd5dc`,
+      avatar: avatar.trim() || (editingUser ? editingUser.avatar : getDefaultAvatarUrl(name)),
       position: position.trim() || 'พนักงานขาย',
       department: department.trim() || 'ทีมขาย',
       joinedDate: editingUser?.joinedDate || new Date().toISOString().split('T')[0]
@@ -208,14 +287,37 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                   <tr key={user.id} className="hover:bg-pink-50/20 transition-colors">
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={user.avatar}
-                          alt={user.name}
-                          className="w-9 h-9 rounded-full bg-pink-50 border border-pink-200 object-cover"
-                          referrerPolicy="no-referrer"
-                        />
+                        <div className="relative group shrink-0">
+                          <img
+                            src={user.avatar}
+                            alt={user.name}
+                            className="w-9 h-9 rounded-full bg-pink-50 border border-pink-200 object-cover shadow-2xs"
+                            referrerPolicy="no-referrer"
+                          />
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => triggerQuickPhotoUpload(user.id)}
+                              className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white cursor-pointer"
+                              title="คลิกเพื่อเปลี่ยนรูปพนักงาน"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                         <div>
-                          <div className="font-semibold text-slate-800">{user.name}</div>
+                          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span>{user.name}</span>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => triggerQuickPhotoUpload(user.id)}
+                                className="text-[10px] text-pink-500 hover:text-pink-600 hover:underline hidden sm:inline"
+                              >
+                                (เปลี่ยนรูป)
+                              </button>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-400">เริ่มงาน: {user.joinedDate || '-'}</div>
                         </div>
                       </div>
@@ -253,8 +355,30 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                     <td className="py-3.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => triggerQuickPhotoUpload(user.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-pink-600 hover:bg-pink-50 transition-colors cursor-pointer"
+                              title="เปลี่ยนรูปภาพพนักงาน"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleQuickPhotoDelete(user)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                              title="ลบ/รีเซ็ตรูปภาพพนักงาน"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+
                         {canEdit && (
                           <button
+                            type="button"
                             onClick={() => handleOpenEdit(user)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-pink-600 hover:bg-pink-50 transition-colors cursor-pointer"
                             title="แก้ไขข้อมูล"
@@ -265,6 +389,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
                         {canDelete && (
                           <button
+                            type="button"
                             onClick={() => {
                               if (confirm(`คุณต้องการลบผู้ใช้ ${user.name} (${user.id}) ใช่หรือไม่?`)) {
                                 onDeleteUser(user.id);
@@ -277,7 +402,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                           </button>
                         )}
 
-                        {!canEdit && !canDelete && (
+                        {!canEdit && !canDelete && !isAdmin && (
                           <span className="text-[10px] text-slate-300">จำกัดสิทธิ์</span>
                         )}
                       </div>
@@ -289,6 +414,15 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Hidden file input for table-level quick photo upload */}
+      <input
+        type="file"
+        ref={quickFileInputRef}
+        onChange={handleQuickFileChange}
+        accept="image/*"
+        className="hidden"
+      />
 
       {/* Add / Edit User Modal */}
       {isModalOpen && (
@@ -312,13 +446,103 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-3.5">
+            <form onSubmit={handleSave} className="p-6 space-y-3.5 max-h-[80vh] overflow-y-auto">
               {errorMsg && (
                 <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
+
+              {/* Photo Management Section in Modal */}
+              <div className="p-3 rounded-2xl bg-pink-50/50 border border-pink-100">
+                <input
+                  type="file"
+                  ref={modalFileInputRef}
+                  onChange={handleModalFileUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3.5">
+                  <div className="relative group shrink-0">
+                    <img
+                      src={avatar || getDefaultAvatarUrl(name || userId)}
+                      alt="Avatar Preview"
+                      className="w-16 h-16 rounded-2xl bg-white border-2 border-pink-200 object-cover shadow-2xs"
+                      referrerPolicy="no-referrer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => modalFileInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/40 rounded-2xl flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white text-[10px] cursor-pointer"
+                      title="คลิกเพื่ออัปโหลดรูป"
+                    >
+                      <Upload className="w-3.5 h-3.5 mb-0.5" />
+                      <span>อัปโหลด</span>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">รูปภาพพนักงาน</span>
+                      {isUploading && <span className="text-[10px] text-pink-500 animate-pulse">กำลังประมวลผล...</span>}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => modalFileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="px-2 py-1 rounded-lg bg-white border border-pink-200 hover:bg-pink-100/50 text-[11px] font-medium text-slate-700 flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-3 h-3 text-pink-500" />
+                        <span>อัปโหลด</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRandomizeAvatar}
+                        className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium text-slate-700 flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                        title="สุ่มรูปภาพการ์ตูนน่ารัก"
+                      >
+                        <RefreshCw className="w-3 h-3 text-indigo-500" />
+                        <span>สุ่มรูป</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowUrlInput(!showUrlInput)}
+                        className="px-2 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-medium text-slate-700 flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <ImageIcon className="w-3 h-3 text-sky-500" />
+                        <span>ลิงก์</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDeletePhoto}
+                        className="px-2 py-1 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-[11px] font-medium text-rose-600 flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                        title="ลบรูปภาพและใช้ค่าเริ่มต้น"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-500" />
+                        <span>ลบรูป</span>
+                      </button>
+                    </div>
+
+                    {showUrlInput && (
+                      <div className="pt-1">
+                        <input
+                          type="url"
+                          placeholder="วาง URL รูปภาพ (https://...)"
+                          value={avatar}
+                          onChange={e => setAvatar(e.target.value)}
+                          className="w-full px-2.5 py-1 bg-white border border-pink-200 rounded-lg text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-300"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">User ID</label>

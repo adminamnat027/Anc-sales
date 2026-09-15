@@ -121,10 +121,11 @@ export const calculateUserSummaries = (
   dateRange?: DateRange
 ): UserSalesSummary[] => {
   const employeeUsers = users.filter(u => u.role === 'employee');
+  const targetUsers = employeeUsers.length > 0 ? employeeUsers : users;
   const days = getPeriodDays(period, dateRange);
   const targetPerPerson = DAILY_KPI_PER_PERSON * days;
 
-  return employeeUsers.map(user => {
+  return targetUsers.map(user => {
     const userRecords = records.filter(r => r.userId === user.id);
     const totalSales = userRecords.reduce((sum, r) => sum + r.salesAmount, 0);
     const totalPancake = userRecords.reduce((sum, r) => sum + r.pancakeOrders, 0);

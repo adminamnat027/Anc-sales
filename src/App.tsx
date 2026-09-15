@@ -25,6 +25,7 @@ import { UserManagementView } from './components/UserManagementView';
 import { LoginModal } from './components/LoginModal';
 import { RegisterModal } from './components/RegisterModal';
 import { SalesRecordModal } from './components/SalesRecordModal';
+import { AuthGateView } from './components/AuthGateView';
 import { Sparkles, ShieldCheck, UserCheck, AlertCircle, PlusCircle, CheckCircle, Database } from 'lucide-react';
 
 export default function App() {
@@ -62,6 +63,11 @@ export default function App() {
       if (firestoreUsers && firestoreUsers.length > 0) {
         setAllUsers(firestoreUsers);
         saveStoredUsers(firestoreUsers);
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const updated = firestoreUsers.find(u => u.id === prev.id);
+          return updated || null;
+        });
       }
     });
 
@@ -79,6 +85,13 @@ export default function App() {
     };
   }, []);
 
+  // Clear legacy mock session if user was logged in with mock account
+  useEffect(() => {
+    if (currentUser && (currentUser.id.startsWith('EMP-10') || currentUser.id === 'ADM-001' || currentUser.id === 'MGR-001')) {
+      setCurrentUser(null);
+    }
+  }, [currentUser]);
+
   // Sync to local storage
   useEffect(() => {
     saveStoredUsers(allUsers);
@@ -91,6 +104,13 @@ export default function App() {
   useEffect(() => {
     saveStoredCurrentUser(currentUser);
   }, [currentUser]);
+
+  // Ensure employee cannot access reports or manageUsers
+  useEffect(() => {
+    if (currentUser?.role === 'employee' && (activeTab === 'reports' || activeTab === 'manageUsers')) {
+      setActiveTab('dashboard');
+    }
+  }, [currentUser?.role, activeTab]);
 
   // Auth Handlers
   const handleLoginSuccess = (user: User) => {
@@ -227,138 +247,81 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Navigation */}
-      <Navbar
-        currentUser={currentUser}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenLogin={() => setIsLoginOpen(true)}
-        onOpenRegister={() => setIsRegisterOpen(true)}
-        onLogout={handleLogout}
-        onSwitchUser={handleSwitchUser}
-        allUsers={allUsers}
-        onOpenNewRecord={() => handleOpenNewRecord()}
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        
-        {/* Quick Demo Role Bar for Easy Evaluation */}
-        {currentUser && (
-          <div className="mb-5 p-3 rounded-2xl bg-gradient-to-r from-pink-50 via-rose-50/50 to-amber-50/50 border border-pink-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="text-pink-500">✨</span>
-              <span className="font-semibold text-slate-700">สิทธิ์การใช้งานปัจจุบัน:</span>
-              <span className={`px-2.5 py-0.5 rounded-full font-semibold border ${
-                currentUser.role === 'admin'
-                  ? 'bg-rose-100 text-rose-700 border-rose-200'
-                  : currentUser.role === 'manager'
-                  ? 'bg-purple-100 text-purple-700 border-purple-200'
-                  : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-              }`}>
-                {currentUser.role === 'admin'
-                  ? '👑 Admin (เพิ่ม, ลบ, แก้ไขได้ทุกหน้า)'
-                  : currentUser.role === 'manager'
-                  ? '💼 ผู้จัดการ (เพิ่ม/แก้ไขพนักงาน เข้าถึงหลักและรายงาน)'
-                  : '🌟 พนักงาน (บันทึกยอดขายของตนเอง)'}
-              </span>
-            </div>
-
-            {/* Quick Test Switcher Buttons */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400 text-[11px] hidden sm:inline">ทดสอบสลับสิทธิ์:</span>
-              {allUsers.filter(u => u.role === 'admin').slice(0, 1).map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => handleSwitchUser(u)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
-                    currentUser.id === u.id
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200'
-                  }`}
-                >
-                  Admin
-                </button>
-              ))}
-
-              {allUsers.filter(u => u.role === 'manager').slice(0, 1).map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => handleSwitchUser(u)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
-                    currentUser.id === u.id
-                      ? 'bg-purple-600 text-white shadow-xs'
-                      : 'bg-white hover:bg-purple-50 text-purple-700 border border-purple-200'
-                  }`}
-                >
-                  ผู้จัดการ
-                </button>
-              ))}
-
-              {allUsers.filter(u => u.role === 'employee').slice(0, 2).map((u, i) => (
-                <button
-                  key={u.id}
-                  onClick={() => handleSwitchUser(u)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-all cursor-pointer ${
-                    currentUser.id === u.id
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  }`}
-                >
-                  พนักงาน {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* View Switcher */}
-        {activeTab === 'dashboard' && (
-          <DashboardView
+      {/* Top Navigation & Content */}
+      {currentUser ? (
+        <>
+          <Navbar
             currentUser={currentUser}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onOpenLogin={() => setIsLoginOpen(true)}
+            onOpenRegister={() => setIsRegisterOpen(true)}
+            onLogout={handleLogout}
+            onSwitchUser={handleSwitchUser}
             allUsers={allUsers}
-            records={records}
             onOpenNewRecord={() => handleOpenNewRecord()}
-            onEditRecord={handleEditRecord}
-            onDeleteRecord={handleDeleteRecord}
-          />
-        )}
-
-        {activeTab === 'userCards' && (
-          <UserCardsView
-            currentUser={currentUser}
-            allUsers={allUsers}
-            records={records}
-            onOpenNewRecord={(userId) => handleOpenNewRecord(userId)}
-          />
-        )}
-
-        {activeTab === 'reports' && (
-          <ReportsView
-            currentUser={currentUser}
-            allUsers={allUsers}
-            records={records}
-          />
-        )}
-
-        {activeTab === 'manageUsers' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && (
-          <UserManagementView
-            currentUser={currentUser}
-            allUsers={allUsers}
-            onAddUser={handleAddUser}
             onUpdateUser={handleUpdateUser}
-            onDeleteUser={handleDeleteUser}
           />
-        )}
 
-      </main>
+          {/* Main Content Area */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {/* View Switcher */}
+            {activeTab === 'dashboard' && (
+              <DashboardView
+                currentUser={currentUser}
+                allUsers={allUsers}
+                records={records}
+                onOpenNewRecord={() => handleOpenNewRecord()}
+                onEditRecord={handleEditRecord}
+                onDeleteRecord={handleDeleteRecord}
+              />
+            )}
+
+            {activeTab === 'userCards' && (
+              <UserCardsView
+                currentUser={currentUser}
+                allUsers={allUsers}
+                records={records}
+                onOpenNewRecord={(userId) => handleOpenNewRecord(userId)}
+              />
+            )}
+
+            {activeTab === 'reports' && (currentUser.role === 'admin' || currentUser.role === 'manager') && (
+              <ReportsView
+                currentUser={currentUser}
+                allUsers={allUsers}
+                records={records}
+              />
+            )}
+
+            {activeTab === 'manageUsers' && (currentUser.role === 'admin' || currentUser.role === 'manager') && (
+              <UserManagementView
+                currentUser={currentUser}
+                allUsers={allUsers}
+                onAddUser={handleAddUser}
+                onUpdateUser={handleUpdateUser}
+                onDeleteUser={handleDeleteUser}
+              />
+            )}
+          </main>
+        </>
+      ) : (
+        /* Always show Login Gate to verify permissions */
+        <main className="flex-1 flex flex-col justify-center">
+          <AuthGateView
+            allUsers={allUsers}
+            onLoginSuccess={handleLoginSuccess}
+            onRegisterSuccess={handleRegisterSuccess}
+          />
+        </main>
+      )}
 
       {/* Pastel Soft Footer */}
       <footer className="mt-12 bg-white/70 border-t border-pink-100 py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
-            <span className="font-semibold text-slate-700">Employee Sales & KPI Tracker</span>
+            <span className="font-semibold text-slate-700">ระบบจัดเก็บยอด</span>
             <span>• ระบบบันทึกยอดขายพนักงาน</span>
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">
               <Database className="w-3 h-3" />
